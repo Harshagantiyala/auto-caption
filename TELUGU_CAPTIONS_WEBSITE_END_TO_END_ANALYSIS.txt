@@ -1,0 +1,645 @@
+================================================================================
+TELUGU CAPTIONS (CAPLIO) — END-TO-END WEBSITE & ARCHITECTURE SPECIFICATION
+================================================================================
+Target URL Analyzed: https://tcaptions.vercel.app/
+Analysis Date: October 20, 2026
+Internal / Codebase Project Name: "Caplio" (Telugu Captions AI)
+Tagline: "Create Telugu Captions in Seconds" / "Made in Hyderabad for Telugu creators"
+Target Audience: Telugu content creators on Instagram Reels, YouTube Shorts, TikTok
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & PRODUCT IDENTITY
+2. HIGH-LEVEL ARCHITECTURAL DESIGN
+3. COMPLETE TECHNOLOGY STACK
+4. MODULE-BY-MODULE FUNCTIONAL SPECIFICATION
+   - 4.1 Landing Page & Conversion Funnel
+   - 4.2 Authentication & User Identity
+   - 4.3 Media Upload & Ingestion Engine
+   - 4.4 AI Speech Recognition & Transliteration Pipeline
+   - 4.5 Video Studio & Caption Editor
+   - 4.6 Caption Styles & Typography Engine
+   - 4.7 Video Rendering & Export Pipeline
+   - 4.8 Library & Project Management
+   - 4.9 Billing, Pricing & Credit System
+   - 4.10 Custom Style Request Module
+5. DETAILED API SPECIFICATIONS
+6. DATA MODELS & ENTITY RELATIONSHIPS
+7. UX/UI DESIGN SYSTEM & COMPONENT HIERARCHY
+8. PERFORMANCE, SECURITY & SCALABILITY ANALYSIS
+9. COMPETITIVE ADVANTAGES & BUSINESS LOGIC
+
+================================================================================
+1. EXECUTIVE SUMMARY & PRODUCT IDENTITY
+================================================================================
+"Telugu Captions" (internally referred to as "Caplio" across internal state, 
+cookies, events, and assets) is a specialized, web-based SaaS platform designed
+specifically for short-form video creators in the Telugu digital creator ecosystem.
+
+Problem Solved:
+Standard automated transcription tools (like Descript, CapCut, or AutoCap) struggle
+with Telugu for two reasons:
+1. Speech recognition failure on code-mixed "Telugish" (conversational Telugu 
+   interleaved with colloquial English words, slang, and film idioms).
+2. Lack of dual-script support: Creators require captions in both Native Telugu script
+   (తెలుగు) and Romanized Telugu (English alphabet transliteration, e.g., "Meeru ee reel ni...").
+
+Key Value Proposition:
+- Upload short-form vertical video (9:16) or standard formats (1:1, 16:9).
+- Automatic high-accuracy Telugu speech transcription with code-mixed support.
+- Simultaneous Native Telugu script & Romanized English script generation.
+- Real-time in-browser caption editor with split, merge, retime, and spell-correction.
+- 10+ custom-designed animated caption styles tuned for high-retention Reels.
+- Simulated Instagram Reel Safe Zone preview to guarantee captions are never obscured
+  by Instagram UI elements (like, comment, share buttons, audio pill, username).
+- Server-side burned-in MP4 video rendering with real-time SSE progress streaming.
+- Standalone subtitle downloads (.SRT and .VTT).
+
+================================================================================
+2. HIGH-LEVEL ARCHITECTURAL DESIGN
+================================================================================
+The application utilizes a modern Jamstack / Serverless hybrid architecture:
+
+  +-----------------------------------------------------------------------+
+  |                           CLIENT BROWSER                              |
+  |  - Next.js Client Components (React 19 / App Router)                  |
+  |  - Video Player & Timeline Controller (custom HTML5 Video + Canvas)   |
+  |  - Instagram Safe Zone Overlay Simulator (.ed-ig-stage)               |
+  |  - Live Caption Styling Engine (CSS Variables + Dynamic Animation)    |
+  |  - EventSource (SSE) consumer for live export progress                |
+  +-----------------------------------+-----------------------------------+
+                                      |
+                      HTTPS / REST / SSE / Server Actions
+                                      |
+                                      v
+  +-----------------------------------------------------------------------+
+  |                    VERCEL EDGE & SERVERLESS RUNTIME                   |
+  |  - App Router API Routes (/api/upload, /api/jobs, /api/export, etc.)  |
+  |  - Server Actions for Google OAuth Authentication                     |
+  |  - Streaming Server-Sent Events (SSE) endpoints                       |
+  +-------------------+-------------------+-------------------+-----------+
+                      |                   |                   |
+        Direct Upload |      Job Dispatch |      Transcribe   | Audio Pass
+                      v                   v                   v
+  +-----------------------+  +-------------------+  +---------------------+
+  |   VERCEL BLOB STORAGE |  | DATABASE & JOBS   |  | AI SPEECH / ASR     |
+  | - Multipart Client    |  | - PostgreSQL /    |  | - Sarvam AI ASR     |
+  |   Direct Upload       |  |   Serverless DB   |  |   (Indic speech)    |
+  | - Fallback Serverless |  | - User Profiles   |  | - OpenAI Whisper-1  |
+  |   Proxy (<4.5 MB)     |  | - Video Metadata  |  | - Sanscript Engine  |
+  | - Burned MP4 delivery |  | - Timed Segments  |  |   (ITRANS to Telugu)|
+  +-----------------------+  +-------------------+  +---------------------+
+                                          |
+                                          v
+                             +-------------------------+
+                             | VIDEO RENDERING ENGINE  |
+                             | - FFmpeg Pipeline       |
+                             | - Subtitle Burn-in (ASS)|
+                             | - H.264 / AAC Encoding  |
+                             | - Real-time SSE emitter |
+                             +-------------------------+
+
+================================================================================
+3. COMPLETE TECHNOLOGY STACK
+================================================================================
+A. FRONTEND CORE
+- Framework: Next.js (App Router architecture with React Server Components)
+- UI Library: React 19 (concurrent rendering, useOptimistic, startTransition)
+- Build System & Bundler: Turbopack (Turbopack chunking and optimization)
+- CSS & Styling: Tailwind CSS v4 design tokens + Curated Vanilla CSS custom properties
+  (custom class namespaces: .lp- for landing page, .ed- for editor, .tc- for console)
+- Font Engine:
+  * NTR (Google Fonts): Primary native Telugu unicode script display font
+  * Anton: Condensed high-impact sans-serif for viral "Bold" & "Negative" styles
+  * Inter: Standard modern geometric sans-serif for aesthetic styles & app UI
+  * Montserrat: Bold modern tracking for "Karaoke" sync
+  * Instrument Serif: Editorial luxury serif for aesthetic "Pinterest" styles
+  * Geist / Geist Mono: Clean monospaced tags and dashboard analytics
+
+B. BACKEND & CLOUD PLATFORM
+- Hosting & CDN: Vercel Edge Network
+- Execution Environment: Vercel Serverless Functions (Node.js runtime)
+- Storage & Media Upload:
+  * @vercel/blob: Client-side multipart token generation & direct S3-compatible blob upload
+  * Streaming chunk uploads with progress tracking
+  * Direct serverless upload fallback with 'x-filename' headers for files <= 4.2 MB
+- Streaming Protocol: Server-Sent Events (SSE) via `text/event-stream` for live render ticks
+
+C. SPEECH RECOGNITION & NATURAL LANGUAGE PROCESSING
+- Primary ASR Engine: Sarvam AI (Saaras Indic Speech API) - Specialized for Indian languages,
+  fine-tuned for code-mixed Telugu-English conversation, colloquial phrasing, and native accents.
+- Secondary / Fallback ASR Engine: OpenAI Whisper (whisper-1 model via REST API)
+- Script Transliteration: Sanscript / ITRANS engine for algorithmic phonetic conversion 
+  between English Romanized phonetics and Native Telugu script characters.
+- Spell Check & Dictionary: Dedicated `/api/spelling` endpoint for Telugu creator vocabulary.
+
+D. VIDEO PROCESSING & COMPOSITION
+- Audio Demuxer / Extraction: FFmpeg stream extraction to convert MP4/MOV audio to 16kHz WAV/MP3.
+- Subtitle Pipeline:
+  * Timed Segment format with word-level start/end timestamps
+  * SubStation Alpha (.ASS) generator for burned-in styled animations
+  * SubRip (.SRT) generator
+  * Web Video Text Tracks (.VTT) generator
+- Render Pipeline: Hardware-accelerated FFmpeg H.264 compositor encoding burned MP4 at up to 1080p.
+
+E. AUTHENTICATION & ACCESS CONTROL
+- Auth Protocol: NextAuth / Auth.js framework
+- Identity Provider: Google OAuth 2.0 (Single Sign-On)
+- Server-side route protection: Server Action redirects (`/signin?next=...`)
+- Client Theme State: LocalStorage key `caplio-landing-theme` ('light' / 'dark')
+
+================================================================================
+4. MODULE-BY-MODULE FUNCTIONAL SPECIFICATION
+================================================================================
+
+--------------------------------------------------------------------------------
+4.1 LANDING PAGE & CONVERSION FUNNEL (Route: `/`)
+--------------------------------------------------------------------------------
+The landing page is engineered for immediate creator conversion:
+1. Navigation Bar (.navbar):
+   - Brand Logo: Custom Caplio icon and typography.
+   - Quick Links: #upload (Product), #styles (Styles), /billing (Pricing), /style-request (Custom Style).
+   - "Open Dashboard" button (navigates to `/signin?next=%2Flibrary`).
+   - Theme Toggle button: Instant switch between light and dark visual themes.
+   - "Start free" Call To Action.
+2. Hero Section (.lp-hero):
+   - Hyderabad Heritage Badge: Charminar architectural line-art SVG badge reading:
+     "Made in Hyderabad for Telugu creators".
+   - Headline: "Create Telugu Captions in Seconds."
+   - Subtitle: "Upload a Short, generate accurate Telugu captions, customize the style,
+     and export a post-ready video in minutes."
+   - Embedded Upload Card: Direct drag-and-drop zone with instant file picker.
+   - Interactive Style Ribbon (.lp-strip): Quick switcher featuring live video loops
+     demonstrating styles (`/styles/karaoke.mp4`, `/styles/negative.mp4`, `/styles/negative-style.mp4`).
+3. Styles 2.0 Showcase (.lp-section #styles):
+   - Grid exhibiting 14 curated animated caption styles.
+   - Live simulated animated text previewing "Classic", "Bold", "Highlight", "Karaoke", etc.
+   - "View more" expandable accordion.
+4. "In The Wild" Reel Showcase (.lp-section #reels):
+   - Real creator reel cards featuring mock Telugu creator handles:
+     * @teluguhacks (Style: Karaoke)
+     * @sirichats (Style: Negative)
+     * @filmnotes.te (Style: Negative)
+     * @dailytelugu (Style: Karaoke)
+   - Interactive preview tags allowing creators to test each style immediately.
+5. Pricing Matrix (.lp-pricing):
+   - Monthly Plan: ₹299 / month (Unlimited videos, all caption styles, burned MP4, dual script)
+   - Weekly Plan: ₹59 / week (10 videos / day, all caption styles, burned MP4, dual script)
+   - Pay-Per-Video (Featured "Best to start"): ₹9 / video (1 video, no subscription commitment)
+6. FAQ Accordion (.lp-faq-grid):
+   - Detailed answers addressing AI transcription accuracy (90%+ on clear Telugu code-mixed audio),
+     privacy (files deleted from processing storage after export), browser-only workflow,
+     Romanized vs. Native Telugu, font and color customization, and custom style requests.
+7. Footer & Brand Links:
+   - Direct support contact: `hello@telugucaptions.ai`
+   - Legal, terms, privacy, and Hyderabad creator community badge.
+
+--------------------------------------------------------------------------------
+4.2 AUTHENTICATION & USER IDENTITY (Route: `/signin`)
+--------------------------------------------------------------------------------
+- Clean, focused authentication modal with Georgia / Instrument Serif typography.
+- Single Sign-On via Google OAuth ("Continue with Google").
+- Smart redirection logic: remembers destination route via `?next=` parameter 
+  (e.g., redirecting back to `/library`, `/billing`, or `/jobs/[id]`).
+- Privacy guarantee: "We never use your footage to train public models."
+
+--------------------------------------------------------------------------------
+4.3 MEDIA UPLOAD & INGESTION ENGINE
+--------------------------------------------------------------------------------
+The upload workflow handles files of any size with high fault tolerance:
+1. Client Validation:
+   - Supported extensions: .mp4, .mov, .mkv, .webm, .avi, .m4v, .mpg, .mpeg, .wmv, .flv.
+2. Two-Tier Upload Strategy:
+   - Primary (Vercel Blob Direct Client Upload):
+     * Client calls `POST /api/upload/blob` to request a short-lived presigned upload token.
+     * Video file is uploaded directly from the browser to Blob storage using multipart stream.
+     * Avoids serverless payload size limitations (bypassing Vercel's 4.5 MB request ceiling).
+     * Live upload percentage event updates progress in the UI.
+     * On completion, client calls `POST /api/upload/complete` with `{ url, filename }`.
+   - Secondary (Direct XHR Fallback):
+     * If Blob is unconfigured or the file is smaller than 4.2 MB (4404019 bytes),
+       the file is streamed directly to `POST /api/upload` with header `x-filename`.
+3. Completion & Routing:
+   - Both upload channels return `{ id: videoId }`.
+   - The user is automatically navigated to the studio console: `/jobs/${videoId}`.
+
+--------------------------------------------------------------------------------
+4.4 AI SPEECH RECOGNITION & TRANSLITERATION PIPELINE
+--------------------------------------------------------------------------------
+1. Job Processing State Machine:
+   - `queued`: Video uploaded and queued for worker execution.
+   - `transcribing`: Audio extracted via FFmpeg and dispatched to ASR provider.
+   - `processing`: Word alignments, timestamps, and transliteration generation.
+   - `completed`: Transcription ready, editor unlocked.
+   - `failed`: Failure state with actionable creator error messages and automatic retry.
+2. Speech Engine Integration:
+   - Driven by environment variable `ASR_PROVIDER`.
+   - Sarvam AI: Primary engine specialized in Telugu phonetics and conversational Hinglish/Telugish.
+   - OpenAI Whisper: Secondary engine with fallback handling.
+   - Long Video Chunking: If video exceeds standard single-pass limits, the system
+     automatically splits the audio into sequential chunks and recombines them.
+3. Transliteration (ITRANS / Sanscript Engine):
+   - Automatically computes Romanized English phonetic representations for every Telugu segment.
+   - Gives creators the option to display Native Telugu (తెలుగు), Romanized (Telugish), or both.
+4. Real-time Progress Streaming:
+   - Client connects to `GET /api/jobs/${id}/stream` via Server-Sent Events (SSE)
+     for zero-latency UI updates during processing.
+   - Visual HUD during processing displays animated floating Telugu character glyphs (.ed-process-glyphs).
+
+--------------------------------------------------------------------------------
+4.5 VIDEO STUDIO & CAPTION EDITOR (Route: `/jobs/[id]`)
+--------------------------------------------------------------------------------
+The core workstation where creators customize their video before publishing:
+1. Workspace Layout:
+   - Resizable 3-column desktop layout with collapse handles (.ed-resize-handle).
+   - Left Panel: Navigation Rail & Transcript Editor.
+   - Center Stage: HTML5 Video Canvas with live caption overlay.
+   - Right Panel: Style & Typography Customizer / Export Configuration.
+2. Interactive Video Canvas:
+   - HTML5 video playback with custom seekbar, timecode counter, play/pause, volume.
+   - Live synchronized rendering of animated captions matching current playback timestamp.
+3. Instagram Reel Safe Zone Overlay (.ed-ig-safezones):
+   - Critical tool for mobile video creators:
+     * Simulates native Instagram Reels / TikTok interface overlays on top of the preview video.
+     * Marks blocked zones: Top navigation bar (0-10%), Right interaction rail (34-100% right),
+       and Bottom creator metadata / audio pill (warn zone).
+     * Prevents captions from being placed where Instagram buttons (like, comment, share) cover them.
+4. Dedicated Studio Tabs:
+   A. "Transcript" Tab:
+      - Chronological list of timed caption segments.
+      - Dual text boxes for each segment (Native Telugu & Romanized).
+      - Precision start & end timestamp inputs.
+      - "Split Segment" button: Divides segment in half at word midpoint, interpolating timestamps.
+      - "Merge Segment" button: Combines current segment with subsequent segment.
+      - "Add Segment" button: Inserts empty 2-second segment at playhead.
+      - "Spelling Suggestions" integration: Connects to `/api/spelling` to fix common Telugu typos.
+      - Debounced auto-save synced with `PUT /api/transcript/${id}`.
+   B. "Style" Tab:
+      - One-click preset cards (Classic, Bold, Highlight, Karaoke, Negative, Raj Shamani, etc.).
+      - Deep typography controls (Font Family, Size %, Weight, Letter Spacing, Line Height).
+      - Palette controls (Primary Color, Outline Color & Width, Shadow, Glow Strength & Color).
+      - Box & Background controls (None, Inline, Box, Rounded, Background Opacity, Padding X/Y).
+      - Layout controls (Vertical Position Y %, Max Text Width %).
+      - Animation modes (Pop, Fade, Shamani, Pinterest, Karaoke word-highlight).
+   C. "Export" Tab:
+      - Basename input with sanitization rules.
+      - "Export Burned Video" trigger.
+      - Live rendering progress monitor showing percentage, rendered seconds, and total seconds.
+      - Direct download of final MP4.
+      - Standalone SRT / VTT subtitle file downloads.
+   D. "Settings" Tab:
+      - Video metadata, frame rate, resolution, transcription engine diagnostics.
+
+--------------------------------------------------------------------------------
+4.6 CAPTION STYLES & TYPOGRAPHY ENGINE
+--------------------------------------------------------------------------------
+The styling engine uses a structured default schema with granular overrides:
+
+DEFAULT_STYLE Configuration:
+- fontFamily: "NTR"
+- fontSizePct: 4.0 (% of video height)
+- fontWeight: 700
+- color: "#FFFFFF"
+- outlineColor: "#000000"
+- outlineWidth: 0
+- shadow: true
+- backgroundColor: "#000000"
+- backgroundOpacity: 0
+- bgPaddingXPct: 1.2
+- bgPaddingYPct: 0.6
+- align: "center"
+- positionYPct: 55 (% from top)
+- lineHeight: 1.05
+- maxWidthPct: 82 (% of video width)
+- letterSpacingEm: -0.03
+- textCase: "none"
+- karaoke: false
+- highlightColor: "#E2FF00"
+- glowStrength: 1
+- glowColor: "#FFFFFF"
+- boxMode: "none"
+- boxRadiusPct: 1.2
+- animation: "pop"
+- textEffect: "none"
+- emphasisMode: "auto"
+
+Presets Specification:
+1. Classic (`classic`):
+   - Default balanced style, font NTR, subtle shadow, center position (55%), pop animation.
+2. Bold (`bold`):
+   - Font Anton (400), 6.5% size, uppercase, 4px black outline, heavy shadow, bottom-placed (78%).
+   - Designed for punchy hook lines in Reels and Shorts.
+3. Highlight (`highlight`):
+   - Font Inter (700), 3.6% size, dark charcoal text (#111111) inside bright yellow (#FFE600)
+     inline rounded box badge, aesthetic lowercase look.
+4. Karaoke (`karaoke`):
+   - Font Montserrat (700), 4.6% size, synchronized red (#FF3B30) active word highlight,
+     word-by-word pacing matching creator speech rate.
+5. Soft Focus (`soft-focus`):
+   - Font Inter (400), subtle 2.8% size, upper-third placement (28%), quiet aesthetic fade.
+6. Negative (`negative`):
+   - Font Anton (400), 7.2% large size, inverted color cutout effect (`textEffect: "negative"`),
+     high-energy creator aesthetic.
+7. Raj Shamani (#1 - `raj-shamani`):
+   - Generation 3.0 Creator Style inspired by viral podcasters.
+   - Font Anton, 7.8% size, vibrant golden active highlight (#FFD400), 8 words per frame,
+     karaoke animation pacing, vertical position 68%.
+8. Pinterest 2 (#2 - `pinterest-2`):
+   - Generation 3.0 Luxury Style. Font Instrument Serif, 8.6% size, lowercase,
+     neon lime highlight (#C8FF00), 5 words per frame.
+9. Pinterest 3 (#3 - `pinterest-3`):
+   - Generation 3.0 Ultra-bold. Font Inter (800), tight letter spacing (-0.05em), 8.2% size,
+     4 words per frame, high-impact center display (50%).
+10. Pinterest 4 (#4 - `pinterest-4`):
+    - Generation 3.0 Minimalist. Font Inter (800), 7.8% size, 6 words per frame,
+      synced karaoke animation.
+
+--------------------------------------------------------------------------------
+4.7 VIDEO RENDERING & EXPORT PIPELINE
+--------------------------------------------------------------------------------
+1. Export Initiation:
+   - Client sends `POST /api/export/${id}` with:
+     * `style`: Complete JSON style parameters.
+     * `segments`: Full array of adjusted start/end timestamps and text.
+     * `filename`: Validated base filename.
+     * `stream`: true (enables live Server-Sent Events).
+2. Server-Sent Events Rendering Stream:
+   - Response header `Content-Type: text/event-stream`.
+   - Yields real-time events:
+     `{ status: "processing", progress: 42, renderedSec: 12.6, totalSec: 30.0, filename: "my_reel.mp4" }`
+3. Fallback Long Polling:
+   - If SSE connection drops, client automatically fails over to `GET /api/export/${id}`
+     polling at 800ms intervals up to 450 attempts (~6 minutes max duration).
+4. Video Encoding Specifications:
+   - Codec: H.264 (AVC) video, AAC audio.
+   - Container: MP4.
+   - Max Resolution: Up to 1080p (1080x1920 for 9:16 vertical video).
+   - Burned subtitle styling executed with pixel-perfect sub-frame accuracy.
+5. Export Assets Download:
+   - Burned MP4: Available via direct signed blob URL or `/api/export/${id}/file`.
+   - Subtitle SRT: Standard UTF-8 SubRip format with sequential numbering.
+   - Subtitle VTT: WebVTT format for web players.
+
+--------------------------------------------------------------------------------
+4.8 LIBRARY & PROJECT MANAGEMENT (Route: `/library`)
+--------------------------------------------------------------------------------
+- Central creator console for managing uploaded projects.
+- Project Grid / Table: Displays video thumbnail, filename, duration, upload date, status.
+- Views & Filters:
+  * `?filter=all` / `completed` / `processing`
+  * `?view=new` (Quick project creation modal)
+- Project Actions: Open in Studio Editor, Re-export, Download SRT, Delete Project.
+- Sidebar Usage Meter (.tc-side-meter):
+  * Real-time calculation of remaining caption minutes.
+  * Distinction between monthly plan quota and non-expiring prepaid credits.
+
+--------------------------------------------------------------------------------
+4.9 BILLING, PRICING & CREDIT SYSTEM (Route: `/billing`)
+--------------------------------------------------------------------------------
+1. Pricing Model:
+   - Pay-as-you-go / Micro-transactions:
+     * ₹9 per video (single credit, no recurring charges).
+   - Weekly Subscription:
+     * ₹59 per week (up to 10 videos per day, designed for high-frequency reel creators).
+   - Monthly Subscription:
+     * ₹299 per month (unlimited videos, priority rendering).
+2. Credit Tracking:
+   - Event-driven client state: `caplio:credits` custom DOM event triggered when
+     credits are consumed or topped up.
+   - `/api/billing/usage`: Real-time endpoint returning `{ prepaidMinutes, monthlyMinutes, usedMinutes, planLabel }`.
+3. Settings Tab (`/billing?tab=settings`):
+   - Account information, linked Google profile, payment history, invoices.
+
+--------------------------------------------------------------------------------
+4.10 CUSTOM STYLE REQUEST MODULE (Route: `/style-request`)
+--------------------------------------------------------------------------------
+- Creator bespoke service:
+  * Creators can submit reference links (Instagram Reels, YouTube Shorts) of their favorite
+    caption styles or creators.
+  * Design team builds and deploys custom caption style presets into the creator's account
+    within 24 hours.
+
+================================================================================
+5. DETAILED API SPECIFICATIONS
+================================================================================
+
+1. POST /api/upload/blob
+   - Purpose: Generates client upload token for direct Vercel Blob multipart upload.
+   - Headers: Content-Type: application/json
+   - Body: `{ pathname: string, clientPayload: string }`
+   - Response (200): `{ clientToken: string }`
+
+2. POST /api/upload/complete
+   - Purpose: Finalizes uploaded blob and initializes a video job.
+   - Headers: Content-Type: application/json
+   - Body: `{ url: string, filename: string }`
+   - Response (200): `{ id: string, status: "queued" }`
+
+3. POST /api/upload
+   - Purpose: Direct multipart upload fallback for files under 4.2 MB.
+   - Headers: `x-filename: <encoded_filename>`, Content-Type: video/*
+   - Response (200): `{ id: string, status: "queued" }`
+   - Error (413): File exceeds serverless upload threshold.
+
+4. GET /api/jobs
+   - Purpose: Retrieves list of user's uploaded video projects.
+   - Response (200): `Array<{ id, filename, duration, status, createdAt, previewUrl }>`
+
+5. GET /api/jobs/${id}
+   - Purpose: Retrieves full metadata, video source URL, and transcript status.
+   - Response (200): `{ id, filename, status, videoUrl, duration, segments: [...] }`
+
+6. GET /api/jobs/${id}/stream
+   - Purpose: SSE real-time stream of transcription and processing status.
+   - Response Header: `Content-Type: text/event-stream`
+   - Event Payload: `{ status: "queued"|"transcribing"|"processing"|"completed"|"failed", progress: number }`
+
+7. POST /api/jobs/${id}/retry
+   - Purpose: Retries a failed transcription job with audio splitting.
+   - Response (200): `{ status: "queued", progress: 0 }`
+
+8. GET /api/transcript/${id}
+   - Purpose: Fetches timed subtitle segments for video.
+   - Response (200): `{ segments: Array<{ start, end, text, words: [...] }> }`
+
+9. PUT /api/transcript/${id}
+   - Purpose: Updates edited subtitle segments and timings.
+   - Body: `{ segments: Array<{ start, end, text, words: [...] }> }`
+   - Response (200): `{ ok: true }`
+
+10. POST /api/export/${id}
+    - Purpose: Initiates video rendering with burned captions.
+    - Body: `{ style: object, segments: array, filename: string, stream: boolean }`
+    - Response: SSE stream or JSON `{ status, progress, url }`
+
+11. GET /api/export/${id}
+    - Purpose: Polling endpoint for video export completion.
+    - Response (200): `{ status: "idle"|"processing"|"completed"|"failed", progress: number, url?: string }`
+
+12. GET /api/export/${id}/file
+    - Purpose: Direct binary download stream of the exported MP4 video.
+    - Response: `Content-Type: video/mp4`, `Content-Disposition: attachment`
+
+13. GET /api/billing/usage
+    - Purpose: Retrieves creator's available minutes, plan name, and quotas.
+    - Response (200): `{ prepaidMinutes: number, monthlyMinutes: number, usedMinutes: number, planLabel: string }`
+
+14. POST /api/spelling
+    - Purpose: Corrects or suggests spelling for Telugu transliterated and native words.
+    - Body: `{ query: string, script: "telugu"|"romanized" }`
+    - Response (200): `{ suggestions: string[] }`
+
+================================================================================
+6. DATA MODELS & ENTITY RELATIONSHIPS
+================================================================================
+
+1. User Entity:
+   - id: UUID (Primary Key)
+   - email: String (Unique, from Google OAuth)
+   - name: String
+   - avatarUrl: String
+   - plan: Enum ('free', 'pay_per_video', 'weekly', 'monthly')
+   - prepaidMinutes: Float (Non-expiring balance)
+   - monthlyMinutes: Float (Reset cycle quota)
+   - usedMinutes: Float
+   - createdAt: Timestamp
+
+2. VideoJob Entity:
+   - id: String (Unique NanoID / Hash)
+   - userId: UUID (Foreign Key -> User.id)
+   - originalFilename: String
+   - blobUrl: String
+   - durationSec: Float
+   - status: Enum ('queued', 'transcribing', 'processing', 'completed', 'failed')
+   - asrProvider: Enum ('sarvam', 'openai')
+   - errorMessage: String?
+   - createdAt: Timestamp
+   - updatedAt: Timestamp
+
+3. TranscriptSegment Entity:
+   - id: String
+   - jobId: String (Foreign Key -> VideoJob.id)
+   - start: Float (seconds, e.g., 1.45)
+   - end: Float (seconds, e.g., 3.80)
+   - text: String (Native Telugu or Romanized representation)
+   - words: Array<WordTiming>
+
+4. WordTiming Value Object:
+   - word: String
+   - start: Float
+   - end: Float
+   - confidence: Float?
+
+5. CaptionStyle Entity:
+   - id: String (Preset identifier or custom user style ID)
+   - name: String
+   - fontFamily: String
+   - fontSizePct: Float
+   - fontWeight: Integer
+   - color: HexColor
+   - highlightColor: HexColor
+   - outlineColor: HexColor
+   - outlineWidth: Integer
+   - shadow: Boolean
+   - glowStrength: Integer
+   - glowColor: HexColor
+   - boxMode: Enum ('none', 'inline', 'box')
+   - backgroundColor: HexColor
+   - backgroundOpacity: Float
+   - bgPaddingXPct: Float
+   - bgPaddingYPct: Float
+   - boxRadiusPct: Float
+   - positionYPct: Float
+   - maxWidthPct: Float
+   - letterSpacingEm: Float
+   - lineHeight: Float
+   - textCase: Enum ('none', 'upper', 'lower', 'capitalize')
+   - karaoke: Boolean
+   - animation: Enum ('pop', 'fade', 'shamani', 'pinterest', 'pinterest3', 'pinterest4')
+   - textEffect: Enum ('none', 'negative')
+
+================================================================================
+7. UX/UI DESIGN SYSTEM & COMPONENT HIERARCHY
+================================================================================
+A. THEME & COLOR PALETTE
+- Dark Background (Default): `#0a0a0a` / `#171717` (Neutral-950/900)
+- Light Background: `#fbfcfd` with subtle pastel radial mesh gradients:
+  `radial-gradient(ellipse at 15% 10%, rgba(255,186,140,0.28), transparent 42%)`
+  `radial-gradient(ellipse at 85% 0%, rgba(125,211,252,0.28), transparent 40%)`
+- Brand Accents:
+  * Primary Orange/Coral: `#DE5227` / `#FF7A4F`
+  * Electric Yellow/Lime (Highlight): `#E2FF00` / `#FFE600` / `#C8FF00`
+  * Premium Gold (Shamani Preset): `#FFD400`
+  * Viral Red (Karaoke Preset): `#FF3B30`
+- Typography Scale:
+  * Landing Display: Georgia / Instrument Serif for editorial headlines
+  * Sans: Inter for modern controls, metadata, and status badges
+  * Monospace: Geist Mono for timecodes, tags (.lp-mono-tag), and pricing numbers
+
+B. COMPONENT DIRECTORY HIERARCHY (Inferred from Next.js Bundles)
+- app/
+  - layout.tsx (Root HTML, theme script, fonts)
+  - page.tsx (Landing Page component with Hero, Upload card, Styles, Reels, FAQ, Footer)
+  - signin/
+    - page.tsx (Server Action form, Google OAuth integration)
+  - library/
+    - page.tsx (Creator projects dashboard, filtering, search, usage stats)
+  - billing/
+    - page.tsx (Subscription tiers, payment integration, settings tab)
+  - style-request/
+    - page.tsx (Custom style submission form)
+  - jobs/[id]/
+    - page.tsx (Studio Editor root)
+    - components/
+      - VideoStage.tsx (HTML5 canvas + video player + time controls)
+      - InstagramSafeZone.tsx (.ed-ig-stage overlay simulating Reels UI)
+      - TranscriptPanel.tsx (Segment list, split, merge, retime, spell-checker)
+      - StylePanel.tsx (Preset picker, font, color, glow, box sliders)
+      - ExportDialog.tsx (Filename validator, progress bar, MP4/SRT/VTT triggers)
+      - ProcessingOverlay.tsx (Floating Telugu glyph animations during ASR)
+
+================================================================================
+8. PERFORMANCE, SECURITY & SCALABILITY ANALYSIS
+================================================================================
+1. Performance Optimizations:
+   - Vercel Blob client upload bypasses server bottlenecks, uploading directly to S3 storage.
+   - Video preview renders in native HTML5 canvas with hardware acceleration.
+   - Text animations use GPU-accelerated CSS transforms (translate3d, scale) rather than layout recalculations.
+   - Debounced network saves for transcript edits prevent server flood during rapid typing.
+   - Fonts use `font-display: swap` with preloaded WOFF2 subsets to prevent FOIT (Flash of Invisible Text).
+2. Security & Data Protection:
+   - Route-level middleware ensures unauthenticated requests to `/library`, `/billing`,
+     and `/jobs/[id]` automatically redirect to `/signin`.
+   - Vercel Blob tokens are short-lived, single-use presigned tokens.
+   - Filename sanitization (`normalize("NFC")`, strict regex checking against path traversal).
+   - Video privacy: Processing storage files are automatically scrubbed after rendering.
+3. Scalability Considerations:
+   - Serverless architecture automatically scales with creator traffic spikes.
+   - Separation of transcription (Sarvam AI / Whisper API) and video rendering (FFmpeg)
+     allows each stage to scale independently.
+
+================================================================================
+9. COMPETITIVE ADVANTAGES & BUSINESS LOGIC
+================================================================================
+Why "Telugu Captions" succeeds over global caption tools:
+1. Native Code-Mixed Speech Accuracy:
+   Telugu influencers speaking on camera constantly switch between Telugu and English.
+   Mainstream models produce gibberish for code-mixed phrases; Sarvam AI-backed transcription
+   captures exact creator intent.
+2. Dual-Script Romanized & Telugu Support:
+   A huge portion of younger Telugu audiences reads Romanized script ("Ela unnaru?") rather
+   than formal Telugu script ("ఎలా ఉన్నారు?"). Telugu Captions supports both formats natively.
+3. Zero Obscurity with Instagram Safe Zones:
+   Creators waste hours re-exporting videos when Instagram's UI covers up subtitles.
+   The real-time safe zone simulator guarantees 100% readability on mobile feeds.
+4. Micro-pricing tailored for Indian creators:
+   Instead of demanding $20+/month in USD, pricing is anchored to Indian UPI reality:
+   ₹9 per video or ₹59 per week.
+5. Hyper-Local Cultural Affinity:
+   "Made in Hyderabad for Telugu creators" establishes trust, local relevance, and strong
+   word-of-mouth distribution in the Tollywood and Telugu digital creator ecosystem.
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
